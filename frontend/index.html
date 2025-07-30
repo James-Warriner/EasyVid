@@ -80,6 +80,7 @@
   </div>
 
  <script>
+  const base_url = 'https://easyvidapi.onrender.com'
   const form       = document.getElementById('convertForm');
   const fileInput  = document.getElementById('vidUpload');
   const progressC  = document.getElementById('progressContainer');
@@ -96,11 +97,11 @@
     let url, isSingle;
     if (files.length === 1) {
       fd.append('video', files[0]);                
-      url = 'http://localhost:3000/api/convert';  
+      url = `${base_url}api/convert`;  
       isSingle = true;
     } else {
       files.forEach(f => fd.append('videos', f));  
-      url = 'http://localhost:3000/api/convert/bulk';
+      url = `${base_url}api/convert/bulk`;
       isSingle = false;
     }
 
