@@ -1,39 +1,52 @@
-// backend/controllers/converter.js
-const ffmpeg         = require('fluent-ffmpeg');
-const ffmpegPath     = require('@ffmpeg-installer/ffmpeg').path;
-const { PassThrough } = require('stream');
-const archiver      = require('archiver');
-
-ffmpeg.setFfmpegPath(ffmpegPath);
+const { spawn } = require('child_process');
+const ffmpegPath = require('@ffmpeg-installer/ffmpeg').path;
+const archiver   = require('archiver');
 
 exports.single = (req, res) => {
   if (!req.file || !req.file.buffer) {
     return res.status(400).json({ error: 'No file uploaded' });
   }
 
-  const inStream = new PassThrough();
-  inStream.end(req.file.buffer);
 
   const outName = req.file.originalname.replace(/\.mts$/i, '.mp4');
-  res.setHeader('Content-Type', 'video/mp4');
-  res.setHeader('Content-Disposition', `attachment; filename="${outName}"`);
+  res.writeHead(200, {
+    'Content-Type':        'video/mp4',
+    'Content-Disposition': `attachment; filename="${outName}"`,
+    
+  });
 
-  ffmpeg(inStream)
-    .inputFormat('mpegts')               
-    .videoCodec('copy')                  
-    .audioCodec('aac')                  
-    .audioBitrate('320k')                
-    .outputOptions([
-      '-movflags +faststart',            
-      '-bsf:a aac_adtstoasc'             
-    ])
-    .format('mp4')
-    .on('start', cmd => console.log('FFmpeg command:', cmd))
-    .on('error', err => {
-      console.error('Conversion error:', err.message);
-      if (!res.headersSent) res.status(500).json({ error: 'Conversion failed' });
-    })
-    .pipe(res, { end: true });
+  
+  const args = [
+    '-hide_banner',
+    '-loglevel', 'error',
+    '-f', 'mpegts',
+    '-i', 'pipe:0',          
+    '-c:v', 'copy',         
+    '-c:a', 'aac',           
+    '-b:a', '320k',         
+    '-bsf:a', 'aac_adtstoasc', 
+    '-movflags', '+faststart', 
+    '-f', 'mp4',
+    'pipe:1'                 
+  ];
+  const ff = spawn(ffmpegPath, args);
+
+  
+  ff.stdin.write(req.file.buffer);
+  ff.stdin.end();
+
+  
+  ff.stdout.pipe(res);
+
+  ff.stderr.on('data', d => console.error('FFmpeg stderr:', d.toString()));
+  ff.on('error', err => {
+    console.error('FFmpeg spawn error:', err);
+    if (!res.headersSent) res.status(500).end();
+  });
+  ff.on('close', code => {
+    if (code !== 0) console.error(`FFmpeg exited with code ${code}`);
+
+  });
 };
 
 exports.bulk = (req, res) => {
@@ -41,34 +54,47 @@ exports.bulk = (req, res) => {
     return res.status(400).json({ error: 'No files uploaded' });
   }
 
-  res.setHeader('Content-Type', 'application/zip');
-  res.setHeader('Content-Disposition', 'attachment; filename="converted.zip"');
+  res.writeHead(200, {
+    'Content-Type':        'application/zip',
+    'Content-Disposition': 'attachment; filename="converted.zip"',
+  });
 
   const archive = archiver('zip', { zlib: { level: 0 } });
   archive.pipe(res);
 
   req.files.forEach(file => {
-    const inStream = new PassThrough();
-    inStream.end(file.buffer);
-
-    const base    = file.originalname.replace(/\.mts$/i, '');
+    const inName  = file.originalname;
+    const base    = inName.replace(/\.mts$/i, '');
     const outName = `${base}.mp4`;
 
-    const cmd = ffmpeg(inStream)
-      .inputFormat('mpegts')
-      .videoCodec('copy')
-      .audioCodec('aac')
-      .audioBitrate('320k')
-      .outputOptions([
-        '-movflags +faststart',
-        '-bsf:a aac_adtstoasc'
-      ])
-      .format('mp4')
-      .on('error', err =>
-        console.error(`Error converting ${file.originalname}:`, err.message)
-      );
+    const args = [
+      '-hide_banner',
+      '-loglevel', 'error',
+      '-f', 'mpegts',
+      '-i', 'pipe:0',
+      '-c:v', 'copy',
+      '-c:a', 'aac',
+      '-b:a', '320k',
+      '-bsf:a', 'aac_adtstoasc',
+      '-movflags', '+faststart',
+      '-f', 'mp4',
+      'pipe:1'
+    ];
+    const ff = spawn(ffmpegPath, args);
 
-    archive.append(cmd.pipe(new PassThrough()), { name: outName });
+    
+    ff.stdin.write(file.buffer);
+    ff.stdin.end();
+
+    
+    archive.append(ff.stdout, { name: outName });
+
+    ff.stderr.on('data', d =>
+      console.error(`FFmpeg stderr [${inName}]:`, d.toString())
+    );
+    ff.on('error', err =>
+      console.error(`FFmpeg spawn error [${inName}]:`, err)
+    );
   });
 
   archive.finalize();
