@@ -1,8 +1,8 @@
 // backend/controllers/converter.js
-const ffmpeg        = require('fluent-ffmpeg');
-const ffmpegPath    = require('@ffmpeg-installer/ffmpeg').path;
+const ffmpeg         = require('fluent-ffmpeg');
+const ffmpegPath     = require('@ffmpeg-installer/ffmpeg').path;
 const { PassThrough } = require('stream');
-const archiver     = require('archiver');
+const archiver      = require('archiver');
 
 ffmpeg.setFfmpegPath(ffmpegPath);
 
@@ -11,24 +11,21 @@ exports.single = (req, res) => {
     return res.status(400).json({ error: 'No file uploaded' });
   }
 
-
   const inStream = new PassThrough();
   inStream.end(req.file.buffer);
 
   const outName = req.file.originalname.replace(/\.mts$/i, '.mp4');
   res.setHeader('Content-Type', 'video/mp4');
-  res.setHeader(
-    'Content-Disposition',
-    `attachment; filename="${outName}"`
-  );
+  res.setHeader('Content-Disposition', `attachment; filename="${outName}"`);
 
   ffmpeg(inStream)
-    .inputFormat('mpegts')              
-    .videoCodec('copy')                 
-    .audioCodec('aac')                   
+    .inputFormat('mpegts')               
+    .videoCodec('copy')                  
+    .audioCodec('aac')                  
     .audioBitrate('320k')                
     .outputOptions([
-      '-movflags frag_keyframe+empty_moov+faststart'
+      '-movflags +faststart',            
+      '-bsf:a aac_adtstoasc'             
     ])
     .format('mp4')
     .on('start', cmd => console.log('FFmpeg command:', cmd))
@@ -39,17 +36,13 @@ exports.single = (req, res) => {
     .pipe(res, { end: true });
 };
 
-
 exports.bulk = (req, res) => {
-  if (!req.files || req.files.length === 0) {
+  if (!req.files || !req.files.length) {
     return res.status(400).json({ error: 'No files uploaded' });
   }
 
   res.setHeader('Content-Type', 'application/zip');
-  res.setHeader(
-    'Content-Disposition',
-    'attachment; filename="converted.zip"'
-  );
+  res.setHeader('Content-Disposition', 'attachment; filename="converted.zip"');
 
   const archive = archiver('zip', { zlib: { level: 0 } });
   archive.pipe(res);
@@ -66,10 +59,14 @@ exports.bulk = (req, res) => {
       .videoCodec('copy')
       .audioCodec('aac')
       .audioBitrate('320k')
-      .outputOptions(['-movflags frag_keyframe+empty_moov+faststart'])
+      .outputOptions([
+        '-movflags +faststart',
+        '-bsf:a aac_adtstoasc'
+      ])
       .format('mp4')
-      .on('error', err => console.error(`Error on ${file.originalname}:`, err.message));
-
+      .on('error', err =>
+        console.error(`Error converting ${file.originalname}:`, err.message)
+      );
 
     archive.append(cmd.pipe(new PassThrough()), { name: outName });
   });
