@@ -1,8 +1,8 @@
-
-const ffmpeg       = require('fluent-ffmpeg');
-const ffmpegPath   = require('@ffmpeg-installer/ffmpeg').path;
+// backend/controllers/converter.js
+const ffmpeg        = require('fluent-ffmpeg');
+const ffmpegPath    = require('@ffmpeg-installer/ffmpeg').path;
 const { PassThrough } = require('stream');
-const archiver    = require('archiver');
+const archiver     = require('archiver');
 
 ffmpeg.setFfmpegPath(ffmpegPath);
 
@@ -15,33 +15,41 @@ exports.single = (req, res) => {
   const inStream = new PassThrough();
   inStream.end(req.file.buffer);
 
-
   const outName = req.file.originalname.replace(/\.mts$/i, '.mp4');
   res.setHeader('Content-Type', 'video/mp4');
-  res.setHeader('Content-Disposition', `attachment; filename="${outName}"`);
-
+  res.setHeader(
+    'Content-Disposition',
+    `attachment; filename="${outName}"`
+  );
 
   ffmpeg(inStream)
-    .inputFormat('mpegts')         
-    .videoCodec('copy')           
-    .audioCodec('copy')          
-    .outputOptions(['-movflags frag_keyframe+empty_moov+faststart'])
+    .inputFormat('mpegts')              
+    .videoCodec('copy')                 
+    .audioCodec('aac')                   
+    .audioBitrate('320k')                
+    .outputOptions([
+      '-movflags frag_keyframe+empty_moov+faststart'
+    ])
     .format('mp4')
     .on('start', cmd => console.log('FFmpeg command:', cmd))
     .on('error', err => {
-      console.error('Remux error:', err.message);
+      console.error('Conversion error:', err.message);
       if (!res.headersSent) res.status(500).json({ error: 'Conversion failed' });
     })
     .pipe(res, { end: true });
 };
 
+
 exports.bulk = (req, res) => {
-  if (!req.files || !req.files.length) {
+  if (!req.files || req.files.length === 0) {
     return res.status(400).json({ error: 'No files uploaded' });
   }
 
   res.setHeader('Content-Type', 'application/zip');
-  res.setHeader('Content-Disposition', 'attachment; filename="converted.zip"');
+  res.setHeader(
+    'Content-Disposition',
+    'attachment; filename="converted.zip"'
+  );
 
   const archive = archiver('zip', { zlib: { level: 0 } });
   archive.pipe(res);
@@ -50,17 +58,17 @@ exports.bulk = (req, res) => {
     const inStream = new PassThrough();
     inStream.end(file.buffer);
 
-    const base = file.originalname.replace(/\.mts$/i, '');
+    const base    = file.originalname.replace(/\.mts$/i, '');
     const outName = `${base}.mp4`;
 
- 
     const cmd = ffmpeg(inStream)
       .inputFormat('mpegts')
       .videoCodec('copy')
-      .audioCodec('copy')
+      .audioCodec('aac')
+      .audioBitrate('320k')
       .outputOptions(['-movflags frag_keyframe+empty_moov+faststart'])
       .format('mp4')
-      .on('error', err => console.error(`Remux error for ${file.originalname}:`, err.message));
+      .on('error', err => console.error(`Error on ${file.originalname}:`, err.message));
 
 
     archive.append(cmd.pipe(new PassThrough()), { name: outName });
