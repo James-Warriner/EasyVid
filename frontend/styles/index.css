@@ -1,0 +1,52 @@
+/* css/style.css */
+body {
+  background-color: #ffe6f0;
+}
+
+.custom-panel {
+  background-color: #ffccdf;
+  border: none;
+  border-radius: 1rem;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.panel-heading {
+  background-color: transparent;
+  border-bottom: none;
+}
+
+.panel-title {
+  color: #e60050;
+  font-weight: bold;
+}
+
+.custom-file-input {
+  border-radius: 0.5rem;
+  border: 2px dashed #ff88a0;
+  padding: 1rem;
+  background-color: #fff0f6;
+}
+
+.custom-file-input:hover {
+  background-color: #ffe6f7;
+}
+
+.btn-primary {
+  background-color: #ff88a0;
+  border-color: #ff88a0;
+}
+
+.btn-primary:hover,
+.btn-primary:focus {
+  background-color: #ff6390;
+  border-color: #ff6390;
+}
+
+.img{
+    align-self: center;
+}
+#vidUpload{
+  background-color: black;
+  color: white;
+  width:250px;
+}

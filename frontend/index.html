@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>EasyVid Converter</title>
+  <!-- Bootstrap 3 CSS -->
+  <link
+    rel="stylesheet"
+    href="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/css/bootstrap.min.css"
+  />
+  <link rel="stylesheet" href="./styles/index.css" />
+</head>
+<body>
+  <div class="container">
+    <div class="row" style="margin-top: 5rem;">
+      <div class="col-md-6 col-md-offset-3">
+        <div class="panel panel-default custom-panel text-center">
+          <div class="panel-heading">
+            <h2 class="panel-title">EasyVid Converter</h2>
+          </div>
+          <div class="panel-body">
+            <p class="lead">Feed me your file!</p>
+            <img
+              src="./assets/mouth1.png"
+              class="img-responsive center-block"
+              alt="mouth1"
+            />
+
+           
+            <form id="convertForm" enctype="multipart/form-data">
+              <div class="form-group">
+                <input
+                  type="file"
+                  id="vidUpload"
+                  name="video"
+                  accept=".mts,video/*"
+                  class="form-control custom-file-input"
+                  required
+                  multiple
+                />
+              </div>
+              <img
+                src="./assets/mouth2.png"
+                class="img-responsive center-block"
+                alt="mouth2"
+              />
+              <button
+                type="submit"
+                class="btn btn-primary btn-lg btn-block"
+              >
+                Convert to MP4
+              </button>
+            </form>
+
+            
+            <div id="progressContainer" style="display:none; margin-top:1rem;">
+              <div class="progress">
+                <div
+                  id="progressBar"
+                  class="progress-bar progress-bar-striped active"
+                  role="progressbar"
+                  aria-valuemin="0"
+                  aria-valuemax="100"
+                  style="width:0%;"
+                ></div>
+              </div>
+            </div>
+
+            
+             <div id="result">
+
+
+             </div>
+            
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+ <script>
+  const form       = document.getElementById('convertForm');
+  const fileInput  = document.getElementById('vidUpload');
+  const progressC  = document.getElementById('progressContainer');
+  const progressB  = document.getElementById('progressBar');
+  const resultDiv  = document.getElementById('result');
+
+  form.addEventListener('submit', e => {
+    e.preventDefault();
+    const files = Array.from(fileInput.files);
+    if (!files.length) return alert('Please select at least one file.');
+
+    
+    const fd = new FormData();
+    let url, isSingle;
+    if (files.length === 1) {
+      fd.append('video', files[0]);                
+      url = 'http://localhost:3000/api/convert';  
+      isSingle = true;
+    } else {
+      files.forEach(f => fd.append('videos', f));  
+      url = 'http://localhost:3000/api/convert/bulk';
+      isSingle = false;
+    }
+
+    resultDiv.innerHTML = '';       
+    progressB.style.width = '0%';
+    progressB.textContent = '0%';
+    progressC.style.display = 'block';
+
+ 
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', url);
+    xhr.responseType = 'blob';
+
+    
+    xhr.upload.onprogress = ev => {
+      if (!ev.lengthComputable) return;
+      const pct = Math.round((ev.loaded / ev.total) * 50);
+      progressB.style.width = pct + '%';
+      progressB.textContent = `Uploading … ${pct}%`;
+    };
+    xhr.upload.onload = () => {
+      progressB.style.width = '50%';
+      progressB.textContent = 'Converting …';
+    };
+
+   
+    xhr.onprogress = ev => {
+      if (!ev.lengthComputable) return;
+      const pct = 50 + Math.round((ev.loaded / ev.total) * 50);
+      progressB.style.width = pct + '%';
+      progressB.textContent = `Downloading … ${pct}%`;
+    };
+
+    xhr.onload = () => {
+      if (xhr.status !== 200) {
+        return alert('Error: ' + (xhr.statusText||xhr.response));
+      }
+      progressB.style.width = '100%';
+      progressB.textContent = 'Done!';
+
+      const blob = xhr.response;
+      const blobUrl = URL.createObjectURL(blob);
+
+      if (isSingle) {
+        
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = files[0].name.replace(/\.mts$/i, '.mp4');
+        a.className = 'btn btn-success btn-lg btn-block';
+        a.textContent = 'Download MP4';
+        resultDiv.appendChild(a);
+
+  
+        if (/iP(hone|ad|od)/.test(navigator.userAgent)) {
+          const btn = document.createElement('button');
+          btn.className = 'btn btn-info btn-lg btn-block';
+          btn.textContent = 'Save to Photos';
+          btn.onclick = () => {
+            const file = new File([blob], a.download, { type:'video/mp4' });
+            if (navigator.canShare && navigator.canShare({ files:[file] })) {
+              navigator.share({ files:[file], title:'Converted Video' })
+                .catch(console.error);
+            } else {
+              window.open(blobUrl, '_blank');
+            }
+          };
+          resultDiv.appendChild(btn);
+        }
+
+      } else {
+        
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = 'converted.zip';
+        a.className = 'btn btn-success btn-lg btn-block';
+        a.textContent = 'Download All as ZIP';
+        resultDiv.appendChild(a);
+
+        
+      }
+    };
+
+    xhr.onerror = () => alert('Conversion failed.');
+    xhr.send(fd);
+  });
+</script>
+
+  </script>
+</body>
+</html>
