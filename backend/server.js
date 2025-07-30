@@ -3,18 +3,20 @@ const express = require('express');
 const cors    = require('cors');
 const convert = require('./routes/convert');
 const bulk    = require('./routes/convertBulk');
-const dotenv = require('dotenv')
+require('dotenv').config();
 
 
 const PORT = parseInt(process.env.PORT)
 
 const app = express();
-const FRONTEND = process.env.CORS_ORIGIN || 'http://localhost:5500';
+const ALLOWED_ORIGIN = process.env.CORS_ORIGIN || 'http://localhost:5500';
+
 
 
 app.use(cors({
-  origin: FRONTEND,
-  methods: ['POST'],
+  origin: ALLOWED_ORIGIN,
+  methods: ['POST','GET','OPTIONS'],
+  allowedHeaders: ['Content-Type']
 }));
 
 
@@ -32,5 +34,5 @@ app.use('/api/convert', convert);
 app.use('/api/convert/bulk', bulk);
 
 app.listen(PORT, () => {
-  console.log(`🚀 Listening on http://localhost:${PORT}`);
+  console.log(`🚀 Listening for ${ALLOWED_ORIGIN}: running on ${PORT}`);
 });
