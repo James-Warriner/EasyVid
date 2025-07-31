@@ -28,7 +28,7 @@ exports.single = (req, res) => {
     .audioCodec('aac')                    
     .audioBitrate('128k')                
     .format('mp4')                        
-    .outputOptions(['-movflags', 'frag_keyframe+empty_moov+faststart']);
+    .outputOptions(['-movflags', 'faststart']);
 
   command
     .on('start', cmd => console.log('FFmpeg single start:', cmd))
@@ -77,7 +77,7 @@ exports.bulk = (req, res) => {
       .audioCodec('aac')
       .audioBitrate('128k')
       .format('mp4')
-      .outputOptions(['-movflags', 'frag_keyframe+empty_moov+faststart'])
+      .outputOptions(['-movflags', 'faststart'])
       .on('start', cmd => console.log(`FFmpeg bulk start for ${originalName}:`, cmd))
       .on('error', (err, stdout, stderr) => console.error(`FFmpeg bulk error for ${originalName}:`, err.message))
       .pipe(passThrough);
