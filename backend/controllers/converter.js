@@ -1,5 +1,4 @@
 
-
 const ffmpeg = require('fluent-ffmpeg');
 const archiver = require('archiver');
 const tmp = require('tmp');
@@ -14,6 +13,7 @@ function safeUnlink(filePath) {
 }
 
 
+
 exports.single = (req, res) => {
   const file = req.file;
   if (!file) return res.status(400).send('No file provided.');
@@ -25,30 +25,35 @@ exports.single = (req, res) => {
 
   const command = ffmpeg(inputPath)
     .inputFormat('mpegts')
+    .outputOptions([
+      '-y',                    
+      '-fflags +genpts'
+    ])
 
     .videoCodec('libx264')
     .outputOptions([
-      '-preset ultrafast',     
-      '-crf 23',                
+      '-preset ultrafast',
+      '-crf 23',
       '-profile:v main',
       '-level 3.1',
       '-movflags faststart'
     ])
 
+    // Audio: AAC
     .audioCodec('aac')
     .audioBitrate('128k')
 
     .format('mp4')
     .output(tmpPath)
-    .overwriteOutput()
 
     .on('start', cmd => console.log('FFmpeg single start:', cmd))
     .on('stderr', line => console.log('FFmpeg stderr:', line))
-    .on('progress', progress => console.log(`Progress: ${progress.percent?.toFixed(2)}%`))
+    .on('progress', progress => {
+      if (progress.percent) console.log(`Progress: ${progress.percent.toFixed(2)}%`);
+    })
     .on('error', (err, stdout, stderr) => {
       console.error('FFmpeg single error:', err.message);
       console.error(stderr);
-      
       safeUnlink(inputPath);
       tmpFile.removeCallback();
       if (!res.headersSent) res.status(500).send('Conversion failed');
@@ -61,7 +66,6 @@ exports.single = (req, res) => {
       });
     });
 
-
   res.on('close', () => {
     console.log('Response closed, killing FFmpeg');
     try { command.kill('SIGKILL'); } catch {};
@@ -71,6 +75,7 @@ exports.single = (req, res) => {
 
   command.run();
 };
+
 
 exports.bulk = (req, res) => {
   const files = req.files || [];
@@ -86,6 +91,7 @@ exports.bulk = (req, res) => {
 
       const cmd = ffmpeg(inputPath)
         .inputFormat('mpegts')
+        .outputOptions(['-y', '-fflags +genpts'])
         .videoCodec('libx264')
         .outputOptions([
           '-preset ultrafast',
@@ -98,7 +104,6 @@ exports.bulk = (req, res) => {
         .audioBitrate('128k')
         .format('mp4')
         .output(tmpPath)
-        .overwriteOutput()
         .on('start', cmdline => console.log(`FFmpeg bulk start ${file.originalname}:`, cmdline))
         .on('stderr', line => console.log('FFmpeg stderr:', line))
         .on('error', (err, stdout, stderr) => {
