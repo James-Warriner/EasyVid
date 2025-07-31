@@ -3,89 +3,109 @@
 const ffmpeg = require('fluent-ffmpeg');
 const stream = require('stream');
 const archiver = require('archiver');
+const tmp = require('tmp');
+const fs = require('fs');
+const path = require('path');
 
 
 exports.single = (req, res) => {
   const file = req.file;
   if (!file) return res.status(400).send('No file provided.');
 
-
   const originalName = file.originalname;
   const outputName = originalName.replace(/\.mts$/i, '.mp4');
 
+ 
+  const tmpFile = tmp.fileSync({ postfix: '.mp4' });
+  const tmpPath = tmpFile.name;
 
-  res.setHeader('Content-Type', 'video/mp4');
-  res.setHeader('Content-Disposition', `attachment; filename="${outputName}"`);
-
-
-  const inputStream = new stream.PassThrough();
-  inputStream.end(file.buffer);
-
-
-  const command = ffmpeg(inputStream)
-    .inputFormat('mpegts')              
-    .videoCodec('copy')                  
-    .audioCodec('aac')                    
-    .audioBitrate('128k')                
-    .format('mp4')                        
-    .outputOptions(['-movflags', 'faststart']);
-
-  command
+ 
+  ffmpeg()
+    .input(new stream.PassThrough().end(file.buffer))
+    .inputFormat('mpegts')
+    .videoCodec('copy')      
+    .audioCodec('aac')     
+    .audioBitrate('128k')    
+    .format('mp4')
+    .outputOptions(['-movflags', 'faststart'])
+    .output(tmpPath)
     .on('start', cmd => console.log('FFmpeg single start:', cmd))
     .on('error', (err, stdout, stderr) => {
       console.error('FFmpeg single error:', err.message);
       console.error(stderr);
-      res.status(500).send('Conversion failed');
-    });
+      // Clean up temp
+      tmpFile.removeCallback();
+      if (!res.headersSent) res.status(500).send('Conversion failed');
+    })
+    .on('end', () => {
+ 
+      res.download(tmpPath, outputName, err => {
 
-
-  command.pipe(res, { end: true });
+        tmpFile.removeCallback();
+        if (err) console.error('Send error:', err);
+      });
+    })
+    .run();
 };
-
 
 
 exports.bulk = (req, res) => {
   const files = req.files;
   if (!files || !files.length) return res.status(400).send('No files provided.');
 
-  res.setHeader('Content-Type', 'application/zip');
-  res.setHeader('Content-Disposition', 'attachment; filename="converted_videos.zip"');
 
+  const tmpDir = tmp.dirSync({ unsafeCleanup: true });
+  const convertTasks = files.map(file => {
+    const inputBuffer = file.buffer;
+    const outputName = file.originalname.replace(/\.mts$/i, '.mp4');
+    const tmpPath = path.join(tmpDir.name, outputName);
 
-  const archive = archiver('zip', { zlib: { level: 9 } });
-  archive.on('error', err => {
-    console.error('Archive error:', err.message);
-    res.status(500).send('Archive creation failed');
+    return new Promise((resolve, reject) => {
+      ffmpeg()
+        .input(new stream.PassThrough().end(inputBuffer))
+        .inputFormat('mpegts')
+        .videoCodec('copy')
+        .audioCodec('aac')
+        .audioBitrate('128k')
+        .format('mp4')
+        .outputOptions(['-movflags', 'faststart'])
+        .output(tmpPath)
+        .on('start', cmd => console.log(`FFmpeg bulk start for ${file.originalname}:`, cmd))
+        .on('error', (err, stdout, stderr) => {
+          console.error(`FFmpeg bulk error for ${file.originalname}:`, err.message);
+          console.error(stderr);
+          reject(err);
+        })
+        .on('end', resolve)
+        .run();
+    });
   });
 
+  Promise.all(convertTasks)
+    .then(() => {
  
-  archive.pipe(res);
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('Content-Disposition', 'attachment; filename="converted_videos.zip"');
 
-  
-  files.forEach(file => {
-    const originalName = file.originalname;
-    const outputName = originalName.replace(/\.mts$/i, '.mp4');
+      const archive = archiver('zip', { zlib: { level: 9 } });
+      archive.on('error', err => {
+        console.error('Archive error:', err.message);
+        res.status(500).send('Archive creation failed');
+      });
 
-  
-    const passThrough = new stream.PassThrough();
-    const inputStream = new stream.PassThrough();
-    inputStream.end(file.buffer);
+      archive.pipe(res);
+      files.forEach(file => {
+        const name = file.originalname.replace(/\.mts$/i, '.mp4');
+        const filePath = path.join(tmpDir.name, name);
+        archive.file(filePath, { name });
+      });
+      archive.finalize();
 
-    ffmpeg(inputStream)
-      .inputFormat('mpegts')
-      .videoCodec('copy')
-      .audioCodec('aac')
-      .audioBitrate('128k')
-      .format('mp4')
-      .outputOptions(['-movflags', 'faststart'])
-      .on('start', cmd => console.log(`FFmpeg bulk start for ${originalName}:`, cmd))
-      .on('error', (err, stdout, stderr) => console.error(`FFmpeg bulk error for ${originalName}:`, err.message))
-      .pipe(passThrough);
+     
+      res.on('finish', () => tmpDir.removeCallback());
+    })
+    .catch(err => {
 
-   
-    archive.append(passThrough, { name: outputName });
-  });
-
-
-  archive.finalize();
+      tmpDir.removeCallback();
+    });
 };
